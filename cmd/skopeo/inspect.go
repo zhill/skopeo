@@ -14,6 +14,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli"
+	"github.com/containers/image/image"
 )
 
 // inspectOutput is the output format of (skopeo inspect), primarily so that we can format it with a simple json.MarshalIndent.
@@ -89,6 +90,30 @@ func (opts *inspectOptions) run(args []string, stdout io.Writer) (retErr error) 
 		return err
 	}
 	if opts.raw {
+		// Check to see if the arch and os overrides are set in the global flags and if so, apply those to the --raw result to get the specific manifest for that arch and os
+		if manifest.MIMETypeIsMultiImage(mimeType) && (opts.global.overrideArch || opts.global.overrideOS) {
+			if err != nil {
+				return err
+			}
+
+			// Find the appropriate manifest digest to fetch based on the options
+			digest, err := image.ChooseManifestInstanceFromManifestList(ctx, img)
+			if err != nil {
+				return err
+			}
+
+			src, err := img.Reference().NewImageSource(ctx)
+			if err != nil {
+				return err
+			}
+
+			img2 := image.UnparsedInstance(src, &digest)
+			rawManifest, _, err = img2.Manifest()
+			if err != nil {
+				return err
+			}
+
+		}
 		_, err := stdout.Write(rawManifest)
 		if err != nil {
 			return fmt.Errorf("Error writing manifest to standard output: %v", err)
